@@ -14,18 +14,24 @@ PlayfairCipher::PlayfairCipher(const std::string& key)
 
 void PlayfairCipher::setKey(const std::string& key){
 
+  // Store the original key
   cipherKey_ = key;
 
+  // Append the alphabet to the key
   cipherKey_ += "abcdefghijklmnopqrstuvwxyz";
 
+  // Make sure the key is upper case
   std::transform(cipherKey_.begin(), cipherKey_.end(), cipherKey_.begin(), ::toupper);
 
+  // Remove non-alphabet characters
   auto notAlphaIter = std::remove_if(cipherKey_.begin(), cipherKey_.end(), [] (char c){return !std::isalpha(c);});
 
   cipherKey_.erase(notAlphaIter, cipherKey_.end());
   
+  // Change J -> I
   std::transform(cipherKey_.begin(), cipherKey_.end(), cipherKey_.begin(), swapJForI);
 
+  // Remove duplicated letters
   std::string foundChars{""};
 
   auto isRepeated = [&foundChars](char c){
@@ -40,6 +46,7 @@ void PlayfairCipher::setKey(const std::string& key){
   
   cipherKey_.erase(repeatedCharIter, cipherKey_.end());
 
+  // Store the coordinates of each letter
   unsigned int column{0}, row{0};
   for(size_t i{0}; i < cipherKey_.size(); ++i){
     row = i / dimension_;
@@ -53,13 +60,15 @@ void PlayfairCipher::setKey(const std::string& key){
 
 }
 
-std::string PlayfairCipher::applyCipher(const std::string& inputText, const CipherMode cipherMode) {
+std::string PlayfairCipher::applyCipher(const std::string& inputText, const CipherMode cipherMode) const {
 
-  std::cout << "INPUT TEXT: " << inputText << std::endl;
-
+  // Create the output string, initially a copy of the input text
   std::string swappedIJString{inputText};
+
+  // Change J -> I
   std::transform(swappedIJString.begin(), swappedIJString.end(), swappedIJString.begin(), swapJForI);
 
+  // Check for repeated characters (but only when they occur within a digraph)
   std::string cipherString{""};
   for(std::string::const_iterator iter{swappedIJString.begin()}; iter != swappedIJString.end(); ++iter) {
 
@@ -69,71 +78,80 @@ std::string PlayfairCipher::applyCipher(const std::string& inputText, const Ciph
       break;
     }
 
+    // Always add the first of the digraph
+    cipherString += *iter;
+
+    // If the two characters are the same then add an X (or a Q for repeated
+    // X's) between them, otherwise just add the second character
     if(*iter == *(iter+1)){
-      cipherString += *iter;
       (*iter == 'X') ? cipherString += 'Q': cipherString += 'X';   
     } else {
-      cipherString += *iter; 
       cipherString += *(iter+1);
       ++iter;
     }
   }
 
-  if((cipherString.size() % 2) == 1) cipherString += 'Z';
+  // If we've ended up with an odd-length input, add Z to the end
+  // (or X if the last character is a Z)
+  if((cipherString.size() % 2) == 1) {
+    cipherString += (cipherString[cipherString.size()-1] == 'Z') ? 'X' : 'Z';
+  }
 
+  // Loop over the input digraphs
   std::string encryptedString{""};
 
   for(std::string::const_iterator iter{cipherString.begin()}; iter != cipherString.end(); iter+=2){
 
-    std::vector<unsigned int> pos1 = charToPosMap_.find(*iter)->second;
-    std::vector<unsigned int> pos2 = charToPosMap_.find(*(iter+1))->second;
+    PlayfairCoord pos1 { charToPosMap_.find(*iter)->second };
+    PlayfairCoord pos2 { charToPosMap_.find(*(iter+1))->second };
     
-    std::vector<unsigned int> newPos1;
-    std::vector<unsigned int> newPos2;
+    PlayfairCoord newPos1;
+    PlayfairCoord newPos2;
 
     if(cipherMode == CipherMode::Encrypt){
       if(pos1[1] == pos2[1]) {
+        // Rows are the same, so increment the column indices (modulo the grid dimension)
         newPos1 = {(pos1[0] + 1) % dimension_, pos1[1]};
         newPos2 = {(pos2[0] + 1) % dimension_, pos2[1]};
       } else if(pos1[0] == pos2[0]) {
+        // Columns are the same, so increment the row indices (modulo the grid dimension)
         newPos1 = {pos1[0], (pos1[1] + 1) % dimension_};
         newPos2 = {pos2[0], (pos2[1] + 1) % dimension_};
       } else {
+        // Rectangle/Square - so keep the rows the same and swap the columns
         newPos1 = {pos2[0], pos1[1]};
         newPos2 = {pos1[0], pos2[1]};
       }
     } else {
       if(pos1[1] == pos2[1]) {
+        // Rows are the same, so decrement the column indices (modulo the grid dimension)
         newPos1 = {(pos1[0] - 1 + dimension_) % dimension_, pos1[1]};
         newPos2 = {(pos2[0] - 1 + dimension_) % dimension_, pos2[1]};
       } else if(pos1[0] == pos2[0]) {
+        // Columns are the same, so decrement the row indices (modulo the grid dimension)
         newPos1 = {pos1[0], (pos1[1] - 1 + dimension_) % dimension_};
         newPos2 = {pos2[0], (pos2[1] - 1 + dimension_) % dimension_};
       } else {
+        // Rectangle/Square - so keep the rows the same and swap the columns
         newPos1 = {pos2[0], pos1[1]};
         newPos2 = {pos1[0], pos2[1]};
       }
 
     }
 
+    // Find the letters associated with the new coords and append to the encrypted string
     encryptedString += posToCharMap_.find(newPos1)->second;
     encryptedString += posToCharMap_.find(newPos2)->second;
 
   }
 
-  if(cipherMode == CipherMode::Decrypt){
-    std::cout << "DECRYPTED STRING: " << encryptedString << std::endl;
-  } else {
-    std::cout << "ENCRYPTED STRING: " << encryptedString << std::endl;
-  }
-
-  return "";
-
+  // Return the output text
+  return encryptedString;
 }
 
 char PlayfairCipher::swapJForI(char letter) {
 
-  if(letter == 'J') return 'I';
+  if(letter == 'J') { return 'I'; }
   return letter;
 
 }
